@@ -16,15 +16,6 @@ flowchart LR
 
 Cả A và B cần biên dịch client C: collector QUIC gọi engine LSQUIC trên B và dùng timestamp nhận lấy trong C trước khi chuyển qua pipe Python. Collector dùng Paho cho MQTT/TCP và Paho/OpenSSL cho MQTT/TCP + TLS. Khác biệt thư viện và xử lý cần ghi vào hạn chế phép so sánh.
 
-## Ba cấu hình đo và tên trong lệnh
-
-| Tên CLI | Cấu hình thực tế | Kết nối tới EMQX | Vai trò |
-| --- | --- | --- | --- |
-| `--transport tcp` | MQTT trên TCP, không TLS | TCP1883 | Mốc phụ để quan sát chi phí thêm mã hóa |
-| `--transport tls` | MQTT trên TLS1.3 trên TCP | TCP8883 | Đối chứng có mã hóa cho QUIC |
-| `--transport quic` | MQTT trên QUIC; QUIC dùng UDP và tích hợp TLS1.3 | UDP14567 | Cấu hình QUIC có mã hóa |
-
-Tên `tls` trong lệnh chỉ là cách gọi ngắn cho **MQTT/TCP + TLS**. Nó không có nghĩa bỏ TCP hoặc chạy một broker TLS riêng. Cùng EMQX mở ba listener trên các cổng trên. So sánh chính là **MQTT/TCP + TLS1.3 với MQTT/QUIC** vì cả hai có mã hóa; MQTT/TCP thuần là mốc bổ sung. S1 và S2 dùng được cho cả ba cấu hình.
 
 ## Kịch bản đo
 
@@ -47,17 +38,12 @@ Tên `tls` trong lệnh chỉ là cách gọi ngắn cho **MQTT/TCP + TLS**. Nó
 | [`tcp/`](tcp/) | `pub.py` và `sub.py` chỉ thử câu hello với EMQX. **Bộ đo TCP S1/S2 nằm ở `pub/tcp_pub.c`**, không dùng hai tiện ích hello thay phép đo. |
 | [`tests/`](tests/) | Kiểm thử thuật toán: timestamp, phân vị, trùng/muộn, đồng hồ và trạng thái listener. Fixture kiểm thử không phải kết quả hiệu năng. |
 
-## Vì sao dùng libmosquitto và LSQUIC
-
-Hai tên này thuộc hai phần khác nhau của chương trình:
+## libmosquitto và LSQUIC
 
 - **libmosquitto** là thư viện **MQTT client viết bằng C**. Publisher MQTT/TCP thuần và MQTT/TCP + TLS dùng nó để tạo phiên MQTT, gửi CONNECT/PUBLISH và nhận CONNACK. Nhánh MQTT/TCP + TLS dùng thêm OpenSSL để mã hóa kết nối TCP. Đây là lựa chọn triển khai để tái sử dụng xử lý MQTT và đặt mốc đo tại callback, thay vì tự viết lại toàn bộ MQTT/TCP. Broker vẫn là EMQX; không khởi động Mosquitto broker.
 - **LSQUIC** là engine **QUIC**. Code C của nhóm đóng gói MQTT CONNECT/PUBLISH/SUBSCRIBE rồi đưa vào stream; LSQUIC xử lý kết nối QUIC, stream, ACK và khôi phục mất gói. Nhánh này dùng BoringSSL cho TLS1.3 bên trong QUIC. LSQUIC không thay EMQX và không tự tạo payload MQTT.
 - **Paho** là thư viện MQTT phía collector TCP thuần hoặc TCP + TLS bằng Python. Collector QUIC gọi engine C và lấy timestamp nhận ngay trong C trước khi chuyển dữ liệu qua pipe Python.
 - **mosquitto_pub / mosquitto_sub** là tiện ích client dòng lệnh cho kiểm tra thủ công; chúng khác chương trình Mosquitto broker. Các lệnh này vẫn kết nối tới EMQX.
-
-So sánh vì vậy có cả khác biệt thư viện và đường xử lý: libmosquitto/OpenSSL, Paho/OpenSSL và LSQUIC/BoringSSL. Cần ghi chúng vào cấu hình và hạn chế, không quy mọi chênh lệch thời gian chỉ cho TCP hay QUIC.
-
 
 Tham khảo API chính thức: [libmosquitto client library](https://mosquitto.org/api/files/mosquitto-h.html), [LSQUIC v4.6.3](https://github.com/litespeedtech/lsquic/tree/v4.6.3). Bản PowerPoint nguồn được giữ nguyên trong dữ liệu dự án, không đưa lên repository mã.
 
