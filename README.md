@@ -58,20 +58,6 @@ Hai tên này thuộc hai phần khác nhau của chương trình:
 
 So sánh vì vậy có cả khác biệt thư viện và đường xử lý: libmosquitto/OpenSSL, Paho/OpenSSL và LSQUIC/BoringSSL. Cần ghi chúng vào cấu hình và hạn chế, không quy mọi chênh lệch thời gian chỉ cho TCP hay QUIC.
 
-## Đối chiếu slide của nhóm
-
-Đã đối chiếu bản `QUIC QUIC QUIC.pptx` có trong dữ liệu dự án:
-
-| Slide | Nội dung tài liệu | Quan hệ với code |
-| --- | --- | --- |
-| 54 | Tạo tải bằng emqtt_bench --quic **hoặc client của nhóm** | Bản này theo nhánh client C của nhóm. Không tuyên bố emqtt_bench là công cụ duy nhất đã chốt. |
-| 56 | Đề xuất thư viện LSQUIC | Cơ sở chọn engine QUIC cho nhánh Linux/Pi. |
-| 65 | Thử định dạng bản tin bằng Mosquitto + script trên EMQX | Có căn cứ dùng công cụ client Mosquitto. Slide này **không bắt buộc libmosquitto cho toàn bộ bộ đo C**; lựa chọn thư viện C là quyết định triển khai. |
-| 80 | LSQUIC dùng BoringSSL, TCP dùng OpenSSL; collector TCP cố định | Xác nhận hai bộ thư viện khác nhau phải ghi trong hạn chế. Mô hình collector cố định là phương án cũ. |
-| 85 | Client C MQTT3.1.1 dùng LSQUIC tới EMQX UDP14567 | Cơ sở phân tầng MQTT do ứng dụng tạo, QUIC do LSQUIC xử lý. |
-| 90 và 97 | Publisher và subscriber QUIC dùng các kết nối QUIC riêng tới EMQX | Có mô tả cả pub và sub QUIC. Bản cập nhật hiện dùng collector cùng transport theo yêu cầu người dùng. |
-
-`Slide tổng mqtt quic.pptx`, slide15, cũng liệt kê emqtt_bench ở phần công cụ. Hai bộ slide chứa các mức mô tả và phương án khác nhau; không xem mỗi công cụ được liệt kê là một yêu cầu bắt buộc đồng thời. Bản hiện tại giữ A=publisher, B=EMQX+collector và đổi giao thức cả hai chặng theo quyết định mới của người dùng.
 
 Tham khảo API chính thức: [libmosquitto client library](https://mosquitto.org/api/files/mosquitto-h.html), [LSQUIC v4.6.3](https://github.com/litespeedtech/lsquic/tree/v4.6.3). Bản PowerPoint nguồn được giữ nguyên trong dữ liệu dự án, không đưa lên repository mã.
 
