@@ -66,8 +66,8 @@ def main():
     children, handles = [], []
     try:
         for folder, script, extra in [
-            ('collector', 'collector.py', ['--host', '127.0.0.1']),
-            ('dumpcap', 'capture.py', ['--interface', args.interface, '--publisher-ip', args.publisher_ip])]:
+            ('dumpcap', 'capture.py', ['--interface', args.interface, '--publisher-ip', args.publisher_ip,'--include-local-collector']),
+            ('collector', 'collector.py', ['--host', '127.0.0.1','--transport',args.transport])]:
             err = (out / f'{folder}.supervisor.log').open('w')
             handles.append(err)
             child = subprocess.Popen([sys.executable, '-u', str(ROOT / folder / script),
@@ -109,6 +109,10 @@ def main():
         subprocess.run([sys.executable, str(ROOT/'dumpcap/export.py'),
                         str(out/f'{args.run}.pcapng'),'--publisher-ip',args.publisher_ip,
                         '--transport',args.transport,'--output',str(out)],
+                       stdout=log,stderr=subprocess.STDOUT,check=True,timeout=30)
+        subprocess.run([sys.executable,str(ROOT/'dumpcap/export.py'),
+                        str(out/f'{args.run}.pcapng'),'--publisher-ip','127.0.0.1',
+                        '--transport',args.transport,'--output',str(out/'collector_capture')],
                        stdout=log,stderr=subprocess.STDOUT,check=True,timeout=30)
 
 

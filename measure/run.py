@@ -108,6 +108,7 @@ def main():
                     '--run',run,'--output',remote_rel,'--interface',args.capture_interface,
                     '--publisher-ip',route['prefsrc'],'--transport',args.transport])
                 metadata = dict(run_id=run, scenario=args.scenario, transport=args.transport,
+                                collector_transport=args.transport,protocol_scope='both legs; collector on B loopback',
                                 level=level, warmup=repeat==0, count=args.count,
                                 period_ms=args.period_ms, timeout_s=10, qos=0,
                                 environment='two physical Linux machines', exit_code=125)

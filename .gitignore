@@ -1,8 +1,6 @@
 .venv/
 pub/deps/
 pub/.checks/
-pub/bench-pub
-pub/bench-sub
 pub/tcp-pub
 pub/quic-client
 emqx/certs/
@@ -14,3 +12,6 @@ __pycache__/
 *.pem
 *.pcap
 *.pcapng
+.checks/
+tests/evidence/
+docs/

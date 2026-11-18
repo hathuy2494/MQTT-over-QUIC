@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+  echo 'usage: bench-sub tcp|tls|quic host [topic]' >&2
+  exit 2
+fi
+topic=${3:-quic4iot/+/data}
+case "$1" in
+  tcp) exec mosquitto_sub -h "$2" -p 1883 -V mqttv311 -q 1 -t "$topic" -v ;;
+  tls) exec mosquitto_sub -h "$2" -p 8883 -V mqttv311 -q 1 -t "$topic" -v --cafile "${MQTT_CA_FILE:-$here/../emqx/certs/ca.crt}" --tls-version tlsv1.3 ;;
+  quic) exec "$here/quic-client" "$2" sub_quic_diag 0 100 10 --sub "$topic" ;;
+  *) echo 'Use tcp, tls or quic. Formal S2 uses collector.py with the same transport on B.' >&2; exit 2 ;;
+esac

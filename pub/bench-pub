@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ "$#" -ne 6 ]; then
+  echo 'usage: bench-pub tcp|tls|quic host run_id count period_ms timeout_s' >&2
+  exit 2
+fi
+mode=$1
+shift
+case "$mode" in
+  tcp|tls) exec "$here/tcp-pub" "$mode" "$@" ;;
+  quic) exec "$here/quic-client" "$@" ;;
+  *) echo 'transport must be tcp, tls or quic' >&2; exit 2 ;;
+esac

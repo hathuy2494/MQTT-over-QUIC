@@ -19,6 +19,7 @@ def main():
     p.add_argument('--run', required=True)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--duration', type=float, help='optional automatic stop after this many seconds')
+    p.add_argument('--include-local-collector',action='store_true',help='Capture lo in addition to physical B interface')
     a = p.parse_args()
     if not re.fullmatch(r'[A-Za-z0-9_]{1,20}', a.run):
         p.error('invalid run_id')
@@ -30,9 +31,11 @@ def main():
         p.error('capture already exists; choose a new run_id/output')
     ready = a.output / 'capture.ready'
     ready.unlink(missing_ok=True)
-    command = ['dumpcap', '-i', a.interface, '-f',
-               f'host {a.publisher_ip} and (tcp port 1883 or tcp port 8883 or udp port 14567)',
-               '-w', str(path)]
+    ports='(tcp port 1883 or tcp port 8883 or udp port 14567)'
+    command=['dumpcap','-i',a.interface,'-f',f'host {a.publisher_ip} and {ports}']
+    if a.include_local_collector and a.interface!='lo':
+        command+=['-i','lo','-f',f'host 127.0.0.1 and {ports}']
+    command+=['-w',str(path)]
     if a.duration:
         command += ['-a', f'duration:{a.duration}']
     log = []

@@ -79,17 +79,17 @@ static void packet(struct context *c,unsigned char type,const unsigned char *b,s
         log_connect(c->run,"quic",c->ready,c->connack-c->start,c->start_wall,now_us(CLOCK_REALTIME));c->connect_logged=1;
         if(!c->ready){c->failed=1;return;}
         c->next_send=c->connack+2000000;
-        if(c->sub){unsigned char sub[256]={0,1};size_t len=2+put_string(sub+2,c->topic);sub[len++]=0;queue_packet(c,0x82,sub,len);}
+        if(c->sub){unsigned char sub[256]={0,1};size_t len=2+put_string(sub+2,c->topic);sub[len++]=1;queue_packet(c,0x82,sub,len);}
         else if(c->count==0)c->completed=1;
     }else if((type>>4)==9&&c->sub){
-        if(n!=3||b[0]!=0||b[1]!=1||b[2]!=0){c->failed=1;return;}
-        c->subscribed=1;printf("{\"event\":\"subscribed\",\"qos\":0}\n");
+        if(n!=3||b[0]!=0||b[1]!=1||b[2]>1){c->failed=1;return;}
+        c->subscribed=1;printf("{\"event\":\"subscribed\",\"qos\":%u,\"connect_to_suback_us\":%" PRIu64 "}\n",b[2],now_us(CLOCK_MONOTONIC)-c->start);
     }else if((type>>4)==3&&c->sub){
         uint64_t received=now_us(CLOCK_REALTIME);if(n<2)return;
         size_t len=((size_t)b[0]<<8)|b[1],offset=2+len;int qos=(type>>1)&3;
         if(offset>n||qos>1){c->failed=1;return;}
         if(qos){if(offset+2>n){c->failed=1;return;}queue_packet(c,0x40,b+offset,2);offset+=2;}
-        printf("{\"event\":\"receive\",\"recv_ts_us\":%" PRIu64 ",\"topic\":",received);json_string(b+2,len);
+        printf("{\"event\":\"receive\",\"recv_ts_us\":%" PRIu64 ",\"retained\":%s,\"topic\":",received,(type&1)?"true":"false");json_string(b+2,len);
         printf(",\"payload\":");json_string(b+offset,n-offset);printf("}\n");
     }
 }

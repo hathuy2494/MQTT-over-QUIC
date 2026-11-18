@@ -40,6 +40,12 @@ def analyze(root):
                    error=meta.get('error',''))
         if parse_error:
             row['success'] = False
+        collector_meta=path.parent/'collector.meta.json'
+        if collector_meta.exists():
+            receiver=json.loads(collector_meta.read_text())
+            row.update(collector_transport=receiver['transport'],
+                collector_connect_to_connack_us=receiver.get('connect_to_connack_us'),
+                collector_connect_to_suback_us=receiver.get('connect_to_suback_us'))
         if meta['scenario']=='s2':
             clock_valid, clock_error = True, ''
             try:
@@ -107,6 +113,9 @@ def analyze(root):
         for field in ['p50_us','p95_us','delivery_ratio','goodput_kbps']:
             samples=[r[field] for r in members if r.get(field) is not None]
             summary['median_run_'+field]=statistics.median(samples) if samples else None
+        for field in ['collector_connect_to_connack_us','collector_connect_to_suback_us']:
+            samples=[r[field] for r in members if r.get(field) is not None]
+            summary['median_'+field]=statistics.median(samples) if samples else None
         summaries.append(summary)
     for name,data in [('runs.csv',rows),('summary.csv',summaries)]:
         if data:

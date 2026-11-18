@@ -1,4 +1,4 @@
-"""Native machine-B TCP subscriber for formal S2; READY means SUBACK received."""
+"""Machine-B subscriber using the same transport as the publisher on both legs."""
 import argparse
 import csv
 import json
@@ -37,8 +37,14 @@ def main():
     p.add_argument('--run', required=True)
     p.add_argument('--output', type=Path, required=True, help='directory, not CSV filename')
     p.add_argument('--host', default='127.0.0.1')
-    p.add_argument('--port', type=int, default=1883)
+    p.add_argument('--transport',choices=['tcp','tls','quic'],default='tcp')
+    p.add_argument('--port', type=int)
+    p.add_argument('--ca',type=Path,default=Path(__file__).resolve().parents[1]/'emqx/certs/ca.crt')
+    p.add_argument('--server-name',default='emqx.local')
     a = p.parse_args()
+    a.port=a.port or {'tcp':1883,'tls':8883,'quic':14567}[a.transport]
+    if a.transport=='quic' and a.port!=14567:
+        p.error('Native QUIC receiver uses UDP14567')
     if not re.fullmatch(r'[A-Za-z0-9_]{1,20}', a.run):
         p.error('run must have 1–20 letters, digits or underscores')
     import paho.mqtt.client as mqtt
@@ -53,17 +59,24 @@ def main():
     ready.unlink(missing_ok=True)
     state = dict(ready=False, failed=False, stopping=False, rows=0, foreign=0,
                  started_realtime_us=time.time_ns()//1000, run_id=a.run, host=a.host, port=a.port,
-                 transport='tcp', mqtt='3.1.1', subscribe_qos=1)
+                 transport=a.transport, mqtt='3.1.1', subscribe_qos=1)
     output = csvpath.open('x', newline='', encoding='utf-8')
     writer = csv.DictWriter(output, fieldnames=FIELDS)
     writer.writeheader()
     output.flush()
 
     def connected(client, userdata, flags, reason, properties):
+        state['connect_to_connack_us']=(time.monotonic_ns()-state['connect_start_ns'])//1000
         if reason.is_failure:
             state['failed'] = True
             print('ERROR CONNACK', reason, file=sys.stderr, flush=True)
         else:
+            if a.transport=='tls':
+                cipher=client.socket().cipher()
+                if cipher[:2]!=('TLS_AES_128_GCM_SHA256','TLSv1.3'):
+                    state.update(failed=True,error='Collector TLS cipher mismatch')
+                    return
+                state['tls_cipher']=cipher[0]
             client.subscribe('quic4iot/+/data', qos=1)
 
     def subscribed(client, userdata, mid, reasons, properties):
@@ -71,11 +84,15 @@ def main():
             state['failed'] = True
             return
         state['ready'] = True
+        if a.transport!='quic':
+            state['connect_to_suback_us']=(time.monotonic_ns()-state['connect_start_ns'])//1000
         ready.write_text(a.run, encoding='ascii')
         print('READY', flush=True)
 
     def receive(client, userdata, message):
-        received = time.time_ns()//1000  # capture before JSON parsing or disk IO
+        received = getattr(message,'recv_ts_us',None)
+        if received is None:
+            received=time.time_ns()//1000  # before JSON parsing or disk IO
         row = validate_message(message.payload, message.topic, received, validator)
         # Foreign valid JSON belongs to another run; malformed input is retained as an error row.
         if (isinstance(row['run_id'], str)
@@ -100,6 +117,9 @@ def main():
 
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
+    if a.transport=='quic':
+        from quic_receiver import run
+        return run(a,state,output,ready,receive,subscribed)
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id='sub_collector_01',
                          clean_session=True, protocol=mqtt.MQTTv311, reconnect_on_failure=False)
     client.on_connect = connected
@@ -107,6 +127,16 @@ def main():
     client.on_message = receive
     client.on_disconnect = disconnected
     try:
+        if a.transport=='tls':
+            import ssl
+            ctx=ssl.create_default_context(cafile=str(a.ca))
+            ctx.minimum_version=ctx.maximum_version=ssl.TLSVersion.TLSv1_3
+            ctx.set_ecdh_curve('X25519')
+            ctx.keylog_filename=str((a.output/'collector.keys.log').resolve())
+            # Python's SSL API cannot restrict TLS1.3 ciphers on all versions.
+            # EMQX TLS listener restricts AES128; verify the negotiated cipher above.
+            client.tls_set_context(ctx)
+        state['connect_start_ns']=time.monotonic_ns()
         client.connect(a.host, a.port, keepalive=30)
         deadline = time.monotonic()+10
         while not state['stopping'] and not state['failed']:

@@ -12,6 +12,18 @@ from common import validate_clocks, validate_listeners
 
 
 class AnalysisTests(unittest.TestCase):
+    def test_collector_timing_is_separate_from_publisher(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            self.fixture(root)
+            (root/'collector.meta.json').write_text(json.dumps(dict(
+                transport='tls',connect_to_connack_us=2000,connect_to_suback_us=3000)))
+            row=analyze(root)[0]
+            self.assertEqual(row['connect_to_connack_us'],100)
+            self.assertEqual(row['collector_connect_to_connack_us'],2000)
+            self.assertEqual(row['collector_connect_to_suback_us'],3000)
+            self.assertEqual(row['collector_transport'],'tls')
+
     def test_disabled_listener_rejected_even_with_port_present(self):
         text=''.join(f'{tp}:default\n  listen_on : 0.0.0.0:{port}\n  running : true\n' for tp,port in [('tcp',1883),('ssl',8883),('quic',14567)])
         validate_listeners(text)
