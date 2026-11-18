@@ -1,20 +1,30 @@
 # MQTT Transport Benchmark
 
-Bộ công cụ thực nghiệm so sánh MQTT 3.1.1 qua TCP, TLS 1.3 và QUIC trong điều kiện mạng có độ trễ và mất gói. Dự án đo hai khía cạnh: thời gian thiết lập kết nối MQTT và khả năng chuyển bản tin từ publisher đến collector.
+Bộ công cụ thực nghiệm so sánh MQTT 3.1.1 theo ba cấu hình: MQTT/TCP không mã hóa, MQTT/TCP + TLS 1.3 và MQTT/QUIC có TLS 1.3 tích hợp. TLS trong cấu hình MQTT/TLS chạy trên TCP; đây là ba cấu hình đo, không phải ba giao thức vận chuyển độc lập. Dự án đo hai khía cạnh: thời gian thiết lập kết nối MQTT và khả năng chuyển bản tin từ publisher đến collector.
 
 ## Mô hình thí nghiệm
 
 Thí nghiệm được thiết kế cho hai máy Linux. Máy A chạy publisher viết bằng C và dùng Linux NetEm để mô phỏng độ trễ hoặc mất gói trên đường gửi. Máy B chạy broker EMQX 5.8.8, collector Python và công cụ bắt gói.
 
-Cả ba phương án dùng chung broker và đổi giao thức ở cả hai chặng: TCP → EMQX → TCP, TLS → EMQX → TLS, QUIC → EMQX → QUIC. Máy A giữ publisher; máy B giữ EMQX và collector. Chặng thứ hai chạy nội bộ máy B (loopback). NetEm vẫn chỉ áp trên cổng ra máy A; không mô phỏng loss/delay trên loopback B.
+Cả ba cấu hình dùng chung một broker EMQX. Hai chặng luôn dùng cùng cấu hình: MQTT/TCP → EMQX → MQTT/TCP; MQTT/TCP + TLS → EMQX → MQTT/TCP + TLS; MQTT/QUIC → EMQX → MQTT/QUIC. Máy A giữ publisher; máy B giữ EMQX và collector. Chặng thứ hai chạy nội bộ máy B (loopback). NetEm vẫn chỉ áp trên cổng ra máy A; không mô phỏng loss/delay trên loopback B.
 
 ```mermaid
 flowchart LR
-  A["Máy A: publisher TCP / TLS / QUIC"] -->|"Ethernet"| B["Máy B: EMQX"]
-  B -->|"Loopback, cùng giao thức"| C["Máy B: collector TCP / TLS / QUIC"]
+  A["Máy A: publisher chọn cấu hình MQTT"] -->|"Ethernet"| B["Máy B: EMQX"]
+  B -->|"Loopback, cùng cấu hình MQTT"| C["Máy B: collector cùng cấu hình với publisher"]
 ```
 
-Cả A và B cần biên dịch client C: collector QUIC gọi engine LSQUIC trên B và dùng timestamp nhận lấy trong C trước khi chuyển qua pipe Python. TCP/TLS collector dùng Paho/OpenSSL. Khác biệt thư viện và xử lý cần ghi vào hạn chế phép so sánh.
+Cả A và B cần biên dịch client C: collector QUIC gọi engine LSQUIC trên B và dùng timestamp nhận lấy trong C trước khi chuyển qua pipe Python. Collector dùng Paho cho MQTT/TCP và Paho/OpenSSL cho MQTT/TCP + TLS. Khác biệt thư viện và xử lý cần ghi vào hạn chế phép so sánh.
+
+## Ba cấu hình đo và tên trong lệnh
+
+| Tên CLI | Cấu hình thực tế | Kết nối tới EMQX | Vai trò |
+| --- | --- | --- | --- |
+| `--transport tcp` | MQTT trên TCP, không TLS | TCP1883 | Mốc phụ để quan sát chi phí thêm mã hóa |
+| `--transport tls` | MQTT trên TLS1.3 trên TCP | TCP8883 | Đối chứng có mã hóa cho QUIC |
+| `--transport quic` | MQTT trên QUIC; QUIC dùng UDP và tích hợp TLS1.3 | UDP14567 | Cấu hình QUIC có mã hóa |
+
+Tên `tls` trong lệnh chỉ là cách gọi ngắn cho **MQTT/TCP + TLS**. Nó không có nghĩa bỏ TCP hoặc chạy một broker TLS riêng. Cùng EMQX mở ba listener trên các cổng trên. So sánh chính là **MQTT/TCP + TLS1.3 với MQTT/QUIC** vì cả hai có mã hóa; MQTT/TCP thuần là mốc bổ sung. S1 và S2 dùng được cho cả ba cấu hình.
 
 ## Kịch bản đo
 
@@ -29,9 +39,9 @@ Cả A và B cần biên dịch client C: collector QUIC gọi engine LSQUIC tr�
 
 | Thư mục | Vai trò và các file chính |
 | --- | --- |
-| [`pub/`](pub/) | Chương trình gửi dùng cho **cả S1 và S2**. `tcp_pub.c` gửi bằng TCP/TLS; `quic_client.c` xử lý QUIC; `bench-pub` chọn giao thức. `bench-sub` hỗ trợ thử nhận thủ công. |
-| [`emqx/`](emqx/) | **Broker duy nhất là EMQX**. `compose.yaml` khởi động broker; `emqx.conf` bật TCP1883, TLS8883, QUIC/UDP14567; `make_certs.py` tạo chứng chỉ lab. |
-| [`collector/`](collector/) | Subscriber chính thức trên B, **đổi cùng giao thức với publisher**. `collector.py` nhận TCP/TLS hoặc gọi `quic_receiver.py` và engine C cho QUIC; kiểm JSON128B, ghi giờ nhận và CSV. |
+| [`pub/`](pub/) | Chương trình gửi dùng cho **cả S1 và S2**. `tcp_pub.c` gửi MQTT/TCP thuần hoặc MQTT/TCP + TLS; `quic_client.c` xử lý QUIC; `bench-pub` chọn cấu hình đo. `bench-sub` hỗ trợ thử nhận thủ công. |
+| [`emqx/`](emqx/) | **Broker duy nhất là EMQX**. `compose.yaml` khởi động broker; `emqx.conf` bật MQTT/TCP1883, MQTT/TCP + TLS8883 và MQTT/QUIC UDP14567; `make_certs.py` tạo chứng chỉ lab. |
+| [`collector/`](collector/) | Subscriber chính thức trên B, **dùng cùng cấu hình với publisher**. `collector.py` nhận MQTT/TCP hoặc MQTT/TCP + TLS hoặc gọi `quic_receiver.py` và engine C cho QUIC; kiểm JSON128B, ghi giờ nhận và CSV. |
 | [`measure/`](measure/) | `run.py` trên A tổ chức lượt đo; `server.py` trên B chuẩn bị capture và collector; `analyze.py` tính S1/S2; `common.py` chứa kiểm tra và metadata dùng chung. |
 | [`dumpcap/`](dumpcap/) | `capture.py` gọi dumpcap ghi cả Ethernet B và loopback; `export.py` gọi tshark. Hai chặng xuất bảng frame riêng; pcapng mở trong Wireshark. |
 | [`tcp/`](tcp/) | `pub.py` và `sub.py` chỉ thử câu hello với EMQX. **Bộ đo TCP S1/S2 nằm ở `pub/tcp_pub.c`**, không dùng hai tiện ích hello thay phép đo. |
@@ -41,9 +51,9 @@ Cả A và B cần biên dịch client C: collector QUIC gọi engine LSQUIC tr�
 
 Hai tên này thuộc hai phần khác nhau của chương trình:
 
-- **libmosquitto** là thư viện **MQTT client viết bằng C**. Publisher TCP/TLS dùng nó để tạo phiên MQTT, gửi CONNECT/PUBLISH và nhận CONNACK. Nhánh TLS dùng thêm OpenSSL. Đây là lựa chọn triển khai để tái sử dụng xử lý MQTT và đặt mốc đo tại callback, thay vì tự viết lại toàn bộ MQTT/TCP. Broker vẫn là EMQX; không khởi động Mosquitto broker.
+- **libmosquitto** là thư viện **MQTT client viết bằng C**. Publisher MQTT/TCP thuần và MQTT/TCP + TLS dùng nó để tạo phiên MQTT, gửi CONNECT/PUBLISH và nhận CONNACK. Nhánh MQTT/TCP + TLS dùng thêm OpenSSL để mã hóa kết nối TCP. Đây là lựa chọn triển khai để tái sử dụng xử lý MQTT và đặt mốc đo tại callback, thay vì tự viết lại toàn bộ MQTT/TCP. Broker vẫn là EMQX; không khởi động Mosquitto broker.
 - **LSQUIC** là engine **QUIC**. Code C của nhóm đóng gói MQTT CONNECT/PUBLISH/SUBSCRIBE rồi đưa vào stream; LSQUIC xử lý kết nối QUIC, stream, ACK và khôi phục mất gói. Nhánh này dùng BoringSSL cho TLS1.3 bên trong QUIC. LSQUIC không thay EMQX và không tự tạo payload MQTT.
-- **Paho** là thư viện MQTT phía collector TCP/TLS bằng Python. Collector QUIC gọi engine C và lấy timestamp nhận ngay trong C trước khi chuyển dữ liệu qua pipe Python.
+- **Paho** là thư viện MQTT phía collector TCP thuần hoặc TCP + TLS bằng Python. Collector QUIC gọi engine C và lấy timestamp nhận ngay trong C trước khi chuyển dữ liệu qua pipe Python.
 - **mosquitto_pub / mosquitto_sub** là tiện ích client dòng lệnh cho kiểm tra thủ công; chúng khác chương trình Mosquitto broker. Các lệnh này vẫn kết nối tới EMQX.
 
 So sánh vì vậy có cả khác biệt thư viện và đường xử lý: libmosquitto/OpenSSL, Paho/OpenSSL và LSQUIC/BoringSSL. Cần ghi chúng vào cấu hình và hạn chế, không quy mọi chênh lệch thời gian chỉ cho TCP hay QUIC.
@@ -67,4 +77,4 @@ Tham khảo API chính thức: [libmosquitto client library](https://mosquitto.o
 
 ## Trạng thái kiểm chứng
 
-Publisher đã được biên dịch và kiểm tra gửi bản tin thành công qua cả TCP, TLS và QUIC trong môi trường kiểm thử. Đã kiểm tra thêm ba cặp TCP/TCP, TLS/TLS, QUIC/QUIC: mỗi cặp nhận3/3 bản tin128byte hợp lệ; capture NIC và loopback sẵn sàng. Đây là QA phần mềm, không phải kết quả S1/S2 hai máy. Hiệu năng trên hai máy Linux thực và khả năng triển khai trên ESP32 vẫn đang chờ kiểm chứng.
+Publisher đã được biên dịch và kiểm tra gửi bản tin thành công qua cả TCP, TLS và QUIC trong môi trường kiểm thử. Đã kiểm tra thêm ba cặp TCP/TCP, (TCP+TLS)/(TCP+TLS), QUIC/QUIC: mỗi cặp nhận3/3 bản tin128byte hợp lệ; capture NIC và loopback sẵn sàng. Đây là QA phần mềm, không phải kết quả S1/S2 hai máy. Hiệu năng trên hai máy Linux thực và khả năng triển khai trên ESP32 vẫn đang chờ kiểm chứng.
