@@ -27,15 +27,43 @@ Cả A và B cần biên dịch client C: collector QUIC gọi engine LSQUIC tr�
 
 ## Cấu trúc mã nguồn
 
-| Thư mục | Nội dung |
+| Thư mục | Vai trò và các file chính |
 | --- | --- |
-| [`pub/`](pub/) | Publisher TCP/TLS dùng libmosquitto và OpenSSL, client QUIC dùng LSQUIC và BoringSSL |
-| [`emqx/`](emqx/) | Cấu hình broker EMQX và mã tạo chứng chỉ thử nghiệm |
-| [`collector/`](collector/) | Subscriber TCP/TLS/QUIC cùng giao thức publisher, kiểm tra JSON và ghi CSV |
-| [`measure/`](measure/) | Điều phối các lượt đo S1/S2 và tổng hợp kết quả |
-| [`dumpcap/`](dumpcap/) | Bắt gói bằng dumpcap và trích xuất dữ liệu bằng tshark |
-| [`tcp/`](tcp/) | Publisher và subscriber TCP dùng để kiểm tra chức năng |
-| [`tests/`](tests/) | Kiểm thử logic đo và phân tích |
+| [`pub/`](pub/) | Chương trình gửi dùng cho **cả S1 và S2**. `tcp_pub.c` gửi bằng TCP/TLS; `quic_client.c` xử lý QUIC; `bench-pub` chọn giao thức. `bench-sub` hỗ trợ thử nhận thủ công. |
+| [`emqx/`](emqx/) | **Broker duy nhất là EMQX**. `compose.yaml` khởi động broker; `emqx.conf` bật TCP1883, TLS8883, QUIC/UDP14567; `make_certs.py` tạo chứng chỉ lab. |
+| [`collector/`](collector/) | Subscriber chính thức trên B, **đổi cùng giao thức với publisher**. `collector.py` nhận TCP/TLS hoặc gọi `quic_receiver.py` và engine C cho QUIC; kiểm JSON128B, ghi giờ nhận và CSV. |
+| [`measure/`](measure/) | `run.py` trên A tổ chức lượt đo; `server.py` trên B chuẩn bị capture và collector; `analyze.py` tính S1/S2; `common.py` chứa kiểm tra và metadata dùng chung. |
+| [`dumpcap/`](dumpcap/) | `capture.py` gọi dumpcap ghi cả Ethernet B và loopback; `export.py` gọi tshark. Hai chặng xuất bảng frame riêng; pcapng mở trong Wireshark. |
+| [`tcp/`](tcp/) | `pub.py` và `sub.py` chỉ thử câu hello với EMQX. **Bộ đo TCP S1/S2 nằm ở `pub/tcp_pub.c`**, không dùng hai tiện ích hello thay phép đo. |
+| [`tests/`](tests/) | Kiểm thử thuật toán: timestamp, phân vị, trùng/muộn, đồng hồ và trạng thái listener. Fixture kiểm thử không phải kết quả hiệu năng. |
+
+## Vì sao dùng libmosquitto và LSQUIC
+
+Hai tên này thuộc hai phần khác nhau của chương trình:
+
+- **libmosquitto** là thư viện **MQTT client viết bằng C**. Publisher TCP/TLS dùng nó để tạo phiên MQTT, gửi CONNECT/PUBLISH và nhận CONNACK. Nhánh TLS dùng thêm OpenSSL. Đây là lựa chọn triển khai để tái sử dụng xử lý MQTT và đặt mốc đo tại callback, thay vì tự viết lại toàn bộ MQTT/TCP. Broker vẫn là EMQX; không khởi động Mosquitto broker.
+- **LSQUIC** là engine **QUIC**. Code C của nhóm đóng gói MQTT CONNECT/PUBLISH/SUBSCRIBE rồi đưa vào stream; LSQUIC xử lý kết nối QUIC, stream, ACK và khôi phục mất gói. Nhánh này dùng BoringSSL cho TLS1.3 bên trong QUIC. LSQUIC không thay EMQX và không tự tạo payload MQTT.
+- **Paho** là thư viện MQTT phía collector TCP/TLS bằng Python. Collector QUIC gọi engine C và lấy timestamp nhận ngay trong C trước khi chuyển dữ liệu qua pipe Python.
+- **mosquitto_pub / mosquitto_sub** là tiện ích client dòng lệnh cho kiểm tra thủ công; chúng khác chương trình Mosquitto broker. Các lệnh này vẫn kết nối tới EMQX.
+
+So sánh vì vậy có cả khác biệt thư viện và đường xử lý: libmosquitto/OpenSSL, Paho/OpenSSL và LSQUIC/BoringSSL. Cần ghi chúng vào cấu hình và hạn chế, không quy mọi chênh lệch thời gian chỉ cho TCP hay QUIC.
+
+## Đối chiếu slide của nhóm
+
+Đã đối chiếu bản `QUIC QUIC QUIC.pptx` có trong dữ liệu dự án:
+
+| Slide | Nội dung tài liệu | Quan hệ với code |
+| --- | --- | --- |
+| 54 | Tạo tải bằng emqtt_bench --quic **hoặc client của nhóm** | Bản này theo nhánh client C của nhóm. Không tuyên bố emqtt_bench là công cụ duy nhất đã chốt. |
+| 56 | Đề xuất thư viện LSQUIC | Cơ sở chọn engine QUIC cho nhánh Linux/Pi. |
+| 65 | Thử định dạng bản tin bằng Mosquitto + script trên EMQX | Có căn cứ dùng công cụ client Mosquitto. Slide này **không bắt buộc libmosquitto cho toàn bộ bộ đo C**; lựa chọn thư viện C là quyết định triển khai. |
+| 80 | LSQUIC dùng BoringSSL, TCP dùng OpenSSL; collector TCP cố định | Xác nhận hai bộ thư viện khác nhau phải ghi trong hạn chế. Mô hình collector cố định là phương án cũ. |
+| 85 | Client C MQTT3.1.1 dùng LSQUIC tới EMQX UDP14567 | Cơ sở phân tầng MQTT do ứng dụng tạo, QUIC do LSQUIC xử lý. |
+| 90 và 97 | Publisher và subscriber QUIC dùng các kết nối QUIC riêng tới EMQX | Có mô tả cả pub và sub QUIC. Bản cập nhật hiện dùng collector cùng transport theo yêu cầu người dùng. |
+
+`Slide tổng mqtt quic.pptx`, slide15, cũng liệt kê emqtt_bench ở phần công cụ. Hai bộ slide chứa các mức mô tả và phương án khác nhau; không xem mỗi công cụ được liệt kê là một yêu cầu bắt buộc đồng thời. Bản hiện tại giữ A=publisher, B=EMQX+collector và đổi giao thức cả hai chặng theo quyết định mới của người dùng.
+
+Tham khảo API chính thức: [libmosquitto client library](https://mosquitto.org/api/files/mosquitto-h.html), [LSQUIC v4.6.3](https://github.com/litespeedtech/lsquic/tree/v4.6.3). Bản PowerPoint nguồn được giữ nguyên trong dữ liệu dự án, không đưa lên repository mã.
 
 ## Trạng thái kiểm chứng
 
