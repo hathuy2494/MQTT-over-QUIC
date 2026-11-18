@@ -1,0 +1,6 @@
+# Developer-only functional validation, NOT a two-machine performance measurement.
+FROM python:3.11-slim-bookworm
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssl tshark mosquitto-clients && rm -rf /var/lib/apt/lists/*
+COPY collector/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+WORKDIR /work

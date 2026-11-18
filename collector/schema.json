@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iot09.local/schemas/api_device_app/v1.json",
+  "title": "API Device-App v1 - ban tin du lieu",
+  "description": "Payload MQTT publish len topic quic4iot/{device_id}/data. Tai lieu day du: docs/API_Device_App.md. Schema KHONG kiem duoc: tong kich thuoc payload == target_size, device_id trung voi topic, seq lien tuc - collector tu kiem cac dieu nay (muc 8).",
+  "type": "object",
+  "required": ["v", "run_id", "device_id", "seq", "ts_us", "temp", "pad"],
+  "additionalProperties": false,
+  "properties": {
+    "v": {
+      "description": "Phien ban schema",
+      "const": 1
+    },
+    "run_id": {
+      "description": "Ma lan chay <Kich ban>_<giao thuc>_<cau hinh>_r<lan>, vd S1_quic_d50_r03; <= 20 ky tu",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_]{1,20}$"
+    },
+    "device_id": {
+      "description": "Ma thiet bi, vd pi01, esp01; <= 8 ky tu, chu thuong va so",
+      "type": "string",
+      "pattern": "^[a-z0-9]{1,8}$"
+    },
+    "seq": {
+      "description": "So thu tu ban tin (uint32), bat dau 0 moi lan chay, tang 1 moi ban tin duoc tao",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "ts_us": {
+      "description": "Thoi diem gui, micro giay ke tu 1970-01-01 UTC, lay ngay truoc publish. Toi da 2^53-1 de khong mat do chinh xac khi doc bang JavaScript",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "temp": {
+      "description": "Gia tri cam bien (do C), 1 chu so thap phan",
+      "type": "number",
+      "minimum": -40.0,
+      "maximum": 125.0
+    },
+    "pad": {
+      "description": "Phan dem chi gom ky tu x, de tong payload = target_size",
+      "type": "string",
+      "pattern": "^x*$"
+    }
+  },
+  "examples": [
+    {"v":1,"run_id":"S1_quic_d50_r03","device_id":"pi01","seq":42,"ts_us":1793105755954219,"temp":27.5,"pad":"xxxxxxxxxxxxxxxxxxxx"}
+  ]
+}

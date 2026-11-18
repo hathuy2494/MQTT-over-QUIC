@@ -1,0 +1,7 @@
+# Compilation/functional QA only; this is NOT the two-physical-machine benchmark.
+FROM debian:bookworm-slim AS tools
+RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ make cmake git golang-go perl ca-certificates zlib1g-dev libevent-dev libmosquitto-dev libssl-dev && rm -rf /var/lib/apt/lists/*
+FROM tools
+WORKDIR /src
+COPY . /src
+RUN --mount=type=cache,target=/opt/quic-deps-cipher DEPS=/opt/quic-deps-cipher JOBS=4 sh /src/build-deps.sh && make DEPS=/opt/quic-deps-cipher CFLAGS='-std=c11 -O2 -Wall -Wextra -Werror'
